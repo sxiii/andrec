@@ -1,5 +1,7 @@
 package com.andrec.app
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
@@ -25,11 +27,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import java.io.File
 
 class MainActivity : ComponentActivity() {
     private lateinit var projectViewModel: ProjectViewModel
     private lateinit var audioRecorderManager: AudioRecorderManager
+
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val recordGranted = permissions[Manifest.permission.RECORD_AUDIO] ?: false
+        if (recordGranted) {
+            // Permission granted, can start recording
+        }
+    }
 
     private val selectTextFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -56,6 +68,9 @@ class MainActivity : ComponentActivity() {
         projectViewModel = ProjectViewModel()
         audioRecorderManager = AudioRecorderManager(this)
 
+        // Request permissions
+        checkAndRequestPermissions()
+
         val defaultProj = File(filesDir, "AndrecDefaultProject")
         if (!defaultProj.exists()) defaultProj.mkdirs()
         projectViewModel.openProject(defaultProj)
@@ -81,9 +96,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun checkAndRequestPermissions() {
+        val permissions = mutableListOf<String>()
+        
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            permissions.add(Manifest.permission.RECORD_AUDIO)
+        }
+
+        if (permissions.isNotEmpty()) {
+            requestPermissionLauncher.launch(permissions.toTypedArray())
+        }
+    }
+
     private var currentRecordingFile: File? = null
 
     private fun handleNewRec() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            checkAndRequestPermissions()
+            return
+        }
+
         val projFolder = projectViewModel.projectFolder ?: File(filesDir, "AndrecDefaultProject")
         if (!projFolder.exists()) projFolder.mkdirs()
 
@@ -197,8 +229,15 @@ fun MainScreen(
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onOpenProjectFolder, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF33334D))) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = onOpenProjectFolder,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF33334D)),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
                         Text("Open Folder", fontSize = 12.sp)
                     }
                     Text(
@@ -244,7 +283,11 @@ fun MainScreen(
                             val step = 10f
                             var x = 0f
                             while (x < width) {
-                                val ampHeight = if (viewModel.isRecording) (viewModel.currentAmplitude * centerY * (0.5f + Math.random().toFloat() * 0.5f)) else (height * 0.2f * (0.3f + Math.sin(x.toDouble() * 0.05).toFloat() * 0.7f))
+                                val ampHeight = if (viewModel.isRecording) {
+                                    (viewModel.currentAmplitude * centerY * (0.5f + Math.random().toFloat() * 0.5f))
+                                } else {
+                                    (height * 0.2f * (0.3f + Math.sin(x.toDouble() * 0.05).toFloat() * 0.7f))
+                                }
                                 drawLine(waveColor, Offset(x, centerY - ampHeight), Offset(x, centerY + ampHeight), 2f)
                                 x += step
                             }
@@ -271,54 +314,64 @@ fun MainScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Button(
                         onClick = onReRec,
+                        modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "ReREC")
+                        Icon(Icons.Default.Refresh, contentDescription = "ReREC", modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("ReREC")
+                        Text("ReREC", fontSize = 14.sp)
                     }
                     Button(
                         onClick = onDelete,
+                        modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C))
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete")
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("DELETE")
+                        Text("DELETE", fontSize = 14.sp)
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Button(
                         onClick = onSave,
+                        modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF388E3C))
                     ) {
-                        Icon(Icons.Default.Check, contentDescription = "Save")
+                        Icon(Icons.Default.Check, contentDescription = "Save", modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("SAVE")
+                        Text("SAVE", fontSize = 14.sp)
                     }
                     Button(
                         onClick = onNewRec,
+                        modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "NewREC")
+                        Icon(Icons.Default.Add, contentDescription = "NewREC", modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("NewREC")
+                        Text("NewREC", fontSize = 14.sp)
                     }
                     Button(
                         onClick = onPlay,
+                        modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = if (viewModel.isPlaying) Color.Yellow else Color(0xFF00796B))
                     ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = "Play")
+                        Icon(Icons.Default.PlayArrow, contentDescription = "Play", modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (viewModel.isPlaying) "PAUSE" else "PLAY")
+                        Text(if (viewModel.isPlaying) "PAUSE" else "PLAY", fontSize = 14.sp)
                     }
                 }
             }
@@ -343,7 +396,10 @@ fun MainScreen(
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Button(
                         onClick = { if (viewModel.fontSizeSp > 10f) viewModel.fontSizeSp -= 2f },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF33334D)),
@@ -376,7 +432,7 @@ fun MainScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .background(0xFF0D0D12.let { Color(it) }, RoundedCornerShape(8.dp))
+                    .background(Color(0xFF0D0D12), RoundedCornerShape(8.dp))
                     .border(1.dp, Color(0xFF33334D), RoundedCornerShape(8.dp))
                     .padding(12.dp)
             ) {

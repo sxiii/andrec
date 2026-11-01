@@ -7,6 +7,11 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import androidx.core.app.ActivityCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -15,7 +20,7 @@ import java.nio.ByteOrder
 class AudioRecorderManager(private val context: Context) {
     private var audioRecord: AudioRecord? = null
     private var isRecording = false
-    private var recordingThread: Thread? = null
+    private var recordingJob: Job? = null
 
     data class AudioConfig(
         val sampleRate: Int = 48000,
@@ -39,7 +44,7 @@ class AudioRecorderManager(private val context: Context) {
             return false
         }
 
-        val bufferSize = maxOf(minBufferSize, config.sampleRate * 2)
+        val bufferSize = maxOf(minBufferSize * 2, config.sampleRate * 2)
 
         try {
             audioRecord = AudioRecord(
@@ -51,19 +56,22 @@ class AudioRecorderManager(private val context: Context) {
             )
 
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                audioRecord?.release()
+                audioRecord = null
                 return false
             }
 
             audioRecord?.startRecording()
             isRecording = true
 
-            recordingThread = Thread {
+            recordingJob = CoroutineScope(Dispatchers.IO).launch {
                 writeWavData(file, config, onAmplitude)
             }
-            recordingThread?.start()
             return true
         } catch (e: Exception) {
             e.printStackTrace()
+            audioRecord?.release()
+            audioRecord = null
             return false
         }
     }
@@ -77,7 +85,7 @@ class AudioRecorderManager(private val context: Context) {
         }
 
         val dataFile = File(file.absolutePath + ".tmp")
-        val outputStream = FileOutputStream(dataFile)
+        var outputStream: FileOutputStream? = null
 
         val bufferSize = config.sampleRate * channels * bytesPerSample / 10
         val buffer = ByteArray(bufferSize)
@@ -85,12 +93,15 @@ class AudioRecorderManager(private val context: Context) {
         var totalAudioLen = 0L
 
         try {
+            outputStream = FileOutputStream(dataFile)
+
             while (isRecording) {
                 val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                 if (read > 0) {
                     outputStream.write(buffer, 0, read)
                     totalAudioLen += read
 
+                    // Calculate RMS amplitude
                     var sum = 0.0
                     val sampleCount = read / bytesPerSample
                     for (i in 0 until sampleCount) {
@@ -110,30 +121,33 @@ class AudioRecorderManager(private val context: Context) {
                     }
                     val rms = if (sampleCount > 0) Math.sqrt(sum / sampleCount).toFloat() else 0f
                     onAmplitude(rms.coerceIn(0f, 1f))
+                } else if (read < 0) {
+                    break
                 }
             }
-            outputStream.close()
-
-            writeWavHeader(file, dataFile, totalAudioLen, config.sampleRate, channels, config.bitDepth)
-            dataFile.delete()
         } catch (e: Exception) {
             e.printStackTrace()
-            try { outputStream.close() } catch (_: Exception) {}
+        } finally {
+            try {
+                outputStream?.close()
+            } catch (_: Exception) {}
+
+            if (totalAudioLen > 0) {
+                writeWavHeader(file, dataFile, totalAudioLen, config.sampleRate, channels, config.bitDepth)
+            }
             dataFile.delete()
         }
     }
 
     fun stopRecording() {
         isRecording = false
+        recordingJob?.cancel()
         try {
             audioRecord?.stop()
             audioRecord?.release()
         } catch (_: Exception) {}
         audioRecord = null
-        try {
-            recordingThread?.join(1000)
-        } catch (_: Exception) {}
-        recordingThread = null
+        recordingJob = null
     }
 
     private fun writeWavHeader(outputFile: File, tmpFile: File, totalAudioLen: Long, sampleRate: Int, channels: Int, bitDepth: Int) {
@@ -186,13 +200,15 @@ class AudioRecorderManager(private val context: Context) {
         header[42] = ((totalAudioLen shr 16) and 0xff).toByte()
         header[43] = ((totalAudioLen shr 24) and 0xff).toByte()
 
-        val fos = FileOutputStream(outputFile)
-        fos.write(header)
-        if (tmpFile.exists()) {
-            val ins = tmpFile.inputStream()
-            ins.copyTo(fos)
-            ins.close()
+        try {
+            val fos = FileOutputStream(outputFile)
+            fos.write(header)
+            if (tmpFile.exists()) {
+                tmpFile.inputStream().use { it.copyTo(fos) }
+            }
+            fos.close()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
-        fos.close()
     }
 }
