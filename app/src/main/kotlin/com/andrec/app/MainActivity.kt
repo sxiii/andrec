@@ -324,7 +324,7 @@ fun MainScreen(
                 ) {
                     Button(
                         onClick = onReRec,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).height(48.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
                     ) {
                         Icon(Icons.Default.Refresh, contentDescription = "ReREC", modifier = Modifier.size(20.dp))
@@ -333,7 +333,7 @@ fun MainScreen(
                     }
                     Button(
                         onClick = onDelete,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).height(48.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C))
                     ) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(20.dp))
@@ -348,7 +348,7 @@ fun MainScreen(
                 ) {
                     Button(
                         onClick = onSave,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).height(48.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF388E3C))
                     ) {
                         Icon(Icons.Default.Check, contentDescription = "Save", modifier = Modifier.size(20.dp))
@@ -357,7 +357,7 @@ fun MainScreen(
                     }
                     Button(
                         onClick = onNewRec,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).height(48.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "NewREC", modifier = Modifier.size(20.dp))
@@ -366,7 +366,7 @@ fun MainScreen(
                     }
                     Button(
                         onClick = onPlay,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).height(48.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = if (viewModel.isPlaying) Color.Yellow else Color(0xFF00796B))
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = "Play", modifier = Modifier.size(20.dp))
