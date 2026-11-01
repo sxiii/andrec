@@ -187,7 +187,21 @@ class MainActivity : ComponentActivity() {
             currentRecordingFile?.let { file ->
                 val projFolder = projectViewModel.projectFolder
                 if (projFolder != null && file.exists()) {
-                    Toast.makeText(this, "Recording saved to ${projFolder.absolutePath}", Toast.LENGTH_LONG).show()
+                    // Now also save to public Music/Andrec folder
+                    val uri = audioRecorderManager.saveToPublicFolder(file)
+                    if (uri != null) {
+                        Toast.makeText(
+                            this,
+                            "Recording saved to:\n1. Project: ${projFolder.absolutePath}\n2. Music/Andrec folder",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        Toast.makeText(
+                            this,
+                            "Recording saved to project: ${projFolder.absolutePath}\n(Failed to copy to Music folder)",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 } else {
                     Toast.makeText(this, "Recording saved", Toast.LENGTH_SHORT).show()
                 }
@@ -342,7 +356,7 @@ fun MainScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF33334D)),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.Folder, contentDescription = "Open Folder", modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.FolderOpen, contentDescription = "Open Folder", modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Folder", fontSize = 12.sp)
                     }
@@ -580,7 +594,7 @@ fun MainScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3949AB)),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                     ) {
-                        Icon(Icons.Default.FileOpen, contentDescription = "Open .txt", modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.Description, contentDescription = "Open .txt", modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Open", fontSize = 12.sp)
                     }
