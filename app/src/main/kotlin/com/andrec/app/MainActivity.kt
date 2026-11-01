@@ -356,7 +356,7 @@ fun MainScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF33334D)),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.FolderOpen, contentDescription = "Open Folder", modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Folder, contentDescription = "Open Folder", modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Folder", fontSize = 12.sp)
                     }
@@ -594,7 +594,7 @@ fun MainScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3949AB)),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                     ) {
-                        Icon(Icons.Default.Description, contentDescription = "Open .txt", modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.Info, contentDescription = "Open .txt", modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Open", fontSize = 12.sp)
                     }
