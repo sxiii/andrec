@@ -67,6 +67,7 @@ class MainActivity : ComponentActivity() {
             val newProj = File(rootDir, "Project_" + System.currentTimeMillis().toString())
             newProj.mkdirs()
             projectViewModel.openProject(newProj)
+            Toast.makeText(this, "Opened project: ${newProj.name}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -183,8 +184,15 @@ class MainActivity : ComponentActivity() {
         if (projectViewModel.isRecording) {
             audioRecorderManager.stopRecording()
             projectViewModel.isRecording = false
+            currentRecordingFile?.let { file ->
+                val projFolder = projectViewModel.projectFolder
+                if (projFolder != null && file.exists()) {
+                    Toast.makeText(this, "Recording saved to ${projFolder.absolutePath}", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Recording saved", Toast.LENGTH_SHORT).show()
+                }
+            }
             currentRecordingFile = null
-            Toast.makeText(this, "Recording saved to project folder", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -255,11 +263,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleExportItem(item: TimelineItem) {
+        if (!item.file.exists()) {
+            Toast.makeText(this, "File does not exist", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         val uri = audioRecorderManager.saveToPublicFolder(item.file)
         if (uri != null) {
-            Toast.makeText(this, "Saved to Music/Andrec folder", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Saved to Music/Andrec folder\nPath: Music/Andrec/${item.file.name}", Toast.LENGTH_LONG).show()
         } else {
-            Toast.makeText(this, "Failed to save to public folder", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Failed to save to public folder. Check storage permissions.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -329,7 +342,9 @@ fun MainScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF33334D)),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     ) {
-                        Text("Open Folder", fontSize = 12.sp)
+                        Icon(Icons.Default.Folder, contentDescription = "Open Folder", modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Folder", fontSize = 12.sp)
                     }
                     Text(
                         text = "${viewModel.sampleRate/1000}kHz / ${viewModel.bitDepth}bit / ${if(viewModel.channels==2) "Stereo" else "Mono"}",
@@ -550,7 +565,7 @@ fun MainScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF33334D)),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                     ) {
-                        Text("-", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("−", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     }
                     Text("${viewModel.fontSizeSp.toInt()}sp", color = Color.LightGray, fontSize = 12.sp)
                     Button(
@@ -558,14 +573,16 @@ fun MainScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF33334D)),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                     ) {
-                        Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     }
                     Button(
                         onClick = onPickTextFile,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3949AB)),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                     ) {
-                        Text("Open .txt", fontSize = 12.sp)
+                        Icon(Icons.Default.FileOpen, contentDescription = "Open .txt", modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Open", fontSize = 12.sp)
                     }
                 }
             }
