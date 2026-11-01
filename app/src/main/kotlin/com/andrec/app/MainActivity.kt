@@ -2,8 +2,10 @@ package com.andrec.app
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -42,7 +44,9 @@ class MainActivity : ComponentActivity() {
     ) { permissions ->
         val recordGranted = permissions[Manifest.permission.RECORD_AUDIO] ?: false
         if (recordGranted) {
-            // Permission granted, can start recording
+            Toast.makeText(this, "Recording permission granted", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Recording permission required", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -94,7 +98,8 @@ class MainActivity : ComponentActivity() {
                         onPlay = { handlePlay() },
                         onPickTextFile = { selectTextFileLauncher.launch(arrayOf("text/plain")) },
                         onOpenProjectFolder = { openProjectLauncher.launch(null) },
-                        onPlayItem = { item -> handlePlayItem(item) }
+                        onPlayItem = { item -> handlePlayItem(item) },
+                        onExportItem = { item -> handleExportItem(item) }
                     )
                 }
             }
@@ -106,6 +111,13 @@ class MainActivity : ComponentActivity() {
         
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             permissions.add(Manifest.permission.RECORD_AUDIO)
+        }
+
+        // For Android 9 and below, request WRITE_EXTERNAL_STORAGE
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
         }
 
         if (permissions.isNotEmpty()) {
@@ -150,6 +162,8 @@ class MainActivity : ComponentActivity() {
         if (success) {
             projectViewModel.isRecording = true
             projectViewModel.addTimelineItem(newFile)
+        } else {
+            Toast.makeText(this, "Failed to start recording", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -170,6 +184,7 @@ class MainActivity : ComponentActivity() {
             audioRecorderManager.stopRecording()
             projectViewModel.isRecording = false
             currentRecordingFile = null
+            Toast.makeText(this, "Recording saved to project folder", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -180,6 +195,7 @@ class MainActivity : ComponentActivity() {
             currentRecordingFile = null
         }
         projectViewModel.removeLastTimelineItem()
+        Toast.makeText(this, "Last recording deleted", Toast.LENGTH_SHORT).show()
     }
 
     private fun handlePlay() {
@@ -238,6 +254,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun handleExportItem(item: TimelineItem) {
+        val uri = audioRecorderManager.saveToPublicFolder(item.file)
+        if (uri != null) {
+            Toast.makeText(this, "Saved to Music/Andrec folder", Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(this, "Failed to save to public folder", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_MEDIA_RECORD, KeyEvent.KEYCODE_R -> { handleNewRec(); return true }
@@ -266,7 +291,8 @@ fun MainScreen(
     onPlay: () -> Unit,
     onPickTextFile: () -> Unit,
     onOpenProjectFolder: () -> Unit,
-    onPlayItem: (TimelineItem) -> Unit
+    onPlayItem: (TimelineItem) -> Unit,
+    onExportItem: (TimelineItem) -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -401,6 +427,17 @@ fun MainScreen(
                                             color = Color.White,
                                             fontSize = 12.sp
                                         )
+                                        IconButton(
+                                            onClick = { onExportItem(item) },
+                                            modifier = Modifier.size(20.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Share,
+                                                contentDescription = "Export to Music folder",
+                                                tint = Color(0xFF00E676),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

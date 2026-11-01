@@ -1,21 +1,29 @@
 package com.andrec.app
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.app.ActivityCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.isActive
 import java.io.File
 import java.io.FileOutputStream
+import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class AudioRecorderManager(private val context: Context) {
     private var audioRecord: AudioRecord? = null
@@ -209,6 +217,58 @@ class AudioRecorderManager(private val context: Context) {
             fos.close()
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    /**
+     * Save a WAV file to the public Music/Recordings folder using MediaStore (Android 10+) or legacy storage
+     */
+    fun saveToPublicFolder(sourceFile: File, displayName: String? = null): Uri? {
+        if (!sourceFile.exists()) {
+            return null
+        }
+
+        val fileName = displayName ?: "Andrec_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.wav"
+
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Use MediaStore for Android 10+
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "audio/wav")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/Andrec")
+                }
+
+                val uri = context.contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, contentValues)
+                uri?.let {
+                    context.contentResolver.openOutputStream(it)?.use { outputStream ->
+                        sourceFile.inputStream().use { inputStream ->
+                            inputStream.copyTo(outputStream)
+                        }
+                    }
+                }
+                uri
+            } else {
+                // Legacy storage for Android 9 and below
+                val musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+                val andrecDir = File(musicDir, "Andrec")
+                if (!andrecDir.exists()) {
+                    andrecDir.mkdirs()
+                }
+
+                val destFile = File(andrecDir, fileName)
+                sourceFile.copyTo(destFile, overwrite = true)
+
+                // Notify media scanner
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DATA, destFile.absolutePath)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "audio/wav")
+                }
+                context.contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 }
