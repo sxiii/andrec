@@ -20,6 +20,7 @@ class ProjectViewModel {
         private set
     var isRecording by mutableStateOf(false)
     var isPlaying by mutableStateOf(false)
+    var currentPlayingItem by mutableStateOf<TimelineItem?>(null)
     var currentAmplitude by mutableStateOf(0f)
     var zoomDurationSeconds by mutableStateOf(10f)
 

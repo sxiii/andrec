@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -28,11 +29,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.delay
 import java.io.File
 
 class MainActivity : ComponentActivity() {
     private lateinit var projectViewModel: ProjectViewModel
     private lateinit var audioRecorderManager: AudioRecorderManager
+    private lateinit var audioPlayerManager: AudioPlayerManager
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -67,6 +70,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         projectViewModel = ProjectViewModel()
         audioRecorderManager = AudioRecorderManager(this)
+        audioPlayerManager = AudioPlayerManager(this)
 
         // Request permissions
         checkAndRequestPermissions()
@@ -89,7 +93,8 @@ class MainActivity : ComponentActivity() {
                         onDelete = { handleDelete() },
                         onPlay = { handlePlay() },
                         onPickTextFile = { selectTextFileLauncher.launch(arrayOf("text/plain")) },
-                        onOpenProjectFolder = { openProjectLauncher.launch(null) }
+                        onOpenProjectFolder = { openProjectLauncher.launch(null) },
+                        onPlayItem = { item -> handlePlayItem(item) }
                     )
                 }
             }
@@ -114,6 +119,12 @@ class MainActivity : ComponentActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             checkAndRequestPermissions()
             return
+        }
+
+        // Stop playback if playing
+        if (projectViewModel.isPlaying) {
+            audioPlayerManager.stopPlayback()
+            projectViewModel.isPlaying = false
         }
 
         val projFolder = projectViewModel.projectFolder ?: File(filesDir, "AndrecDefaultProject")
@@ -172,7 +183,59 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handlePlay() {
-        projectViewModel.isPlaying = !projectViewModel.isPlaying
+        if (projectViewModel.isRecording) {
+            return // Cannot play while recording
+        }
+
+        if (projectViewModel.isPlaying) {
+            audioPlayerManager.stopPlayback()
+            projectViewModel.isPlaying = false
+            projectViewModel.currentPlayingItem = null
+        } else {
+            // Play all timeline items in sequence
+            val items = projectViewModel.timelineItems
+            if (items.isNotEmpty()) {
+                projectViewModel.isPlaying = true
+                playNextItem(0)
+            }
+        }
+    }
+
+    private fun playNextItem(index: Int) {
+        val items = projectViewModel.timelineItems
+        if (index >= items.size || !projectViewModel.isPlaying) {
+            projectViewModel.isPlaying = false
+            projectViewModel.currentPlayingItem = null
+            return
+        }
+
+        val item = items[index]
+        projectViewModel.currentPlayingItem = item
+        audioPlayerManager.playFile(item.file, onComplete = {
+            playNextItem(index + 1)
+        })
+    }
+
+    private fun handlePlayItem(item: TimelineItem) {
+        if (projectViewModel.isRecording) {
+            return // Cannot play while recording
+        }
+
+        if (projectViewModel.currentPlayingItem == item && projectViewModel.isPlaying) {
+            // Stop current playback
+            audioPlayerManager.stopPlayback()
+            projectViewModel.isPlaying = false
+            projectViewModel.currentPlayingItem = null
+        } else {
+            // Play this item
+            audioPlayerManager.stopPlayback()
+            projectViewModel.isPlaying = true
+            projectViewModel.currentPlayingItem = item
+            audioPlayerManager.playFile(item.file, onComplete = {
+                projectViewModel.isPlaying = false
+                projectViewModel.currentPlayingItem = null
+            })
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -189,6 +252,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         audioRecorderManager.stopRecording()
+        audioPlayerManager.release()
     }
 }
 
@@ -201,7 +265,8 @@ fun MainScreen(
     onDelete: () -> Unit,
     onPlay: () -> Unit,
     onPickTextFile: () -> Unit,
-    onOpenProjectFolder: () -> Unit
+    onOpenProjectFolder: () -> Unit,
+    onPlayItem: (TimelineItem) -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -267,8 +332,14 @@ fun MainScreen(
                 } else {
                     Column(modifier = Modifier.fillMaxSize()) {
                         Text(
-                            text = if (viewModel.isRecording) "● RECORDING (${String.format("%.2f", viewModel.currentAmplitude)})" else "Timeline Items: ${viewModel.timelineItems.size}",
-                            color = if (viewModel.isRecording) Color.Red else Color.Cyan,
+                            text = if (viewModel.isRecording) {
+                                "● RECORDING (${String.format("%.2f", viewModel.currentAmplitude)})"
+                            } else if (viewModel.isPlaying) {
+                                "▶ PLAYING: ${viewModel.currentPlayingItem?.file?.name ?: "All"}"
+                            } else {
+                                "Timeline Items: ${viewModel.timelineItems.size}"
+                            },
+                            color = if (viewModel.isRecording) Color.Red else if (viewModel.isPlaying) Color.Green else Color.Cyan,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -279,7 +350,11 @@ fun MainScreen(
                             val centerY = height / 2f
                             drawLine(Color.DarkGray, Offset(0f, centerY), Offset(width, centerY), 1f)
 
-                            val waveColor = if (viewModel.isRecording) Color.Red else Color(0xFF00E676)
+                            val waveColor = when {
+                                viewModel.isRecording -> Color.Red
+                                viewModel.isPlaying -> Color.Green
+                                else -> Color(0xFF00E676)
+                            }
                             val step = 10f
                             var x = 0f
                             while (x < width) {
@@ -294,17 +369,39 @@ fun MainScreen(
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         LazyRow(
-                            modifier = Modifier.fillMaxWidth().height(40.dp),
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             items(viewModel.timelineItems) { item ->
+                                val isPlaying = viewModel.currentPlayingItem == item && viewModel.isPlaying
                                 Box(
                                     modifier = Modifier
-                                        .background(Color(0xFF2A2A3D), RoundedCornerShape(6.dp))
+                                        .background(
+                                            if (isPlaying) Color(0xFF2E7D32) else Color(0xFF2A2A3D),
+                                            RoundedCornerShape(6.dp)
+                                        )
+                                        .clickable { onPlayItem(item) }
                                         .padding(horizontal = 12.dp, vertical = 8.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(item.file.name, color = Color.White, fontSize = 12.sp)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        if (isPlaying) {
+                                            Icon(
+                                                Icons.Default.PlayArrow,
+                                                contentDescription = "Playing",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                        Text(
+                                            item.file.name,
+                                            color = Color.White,
+                                            fontSize = 12.sp
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -325,7 +422,8 @@ fun MainScreen(
                     Button(
                         onClick = onReRec,
                         modifier = Modifier.weight(1f).height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                        enabled = !viewModel.isPlaying
                     ) {
                         Icon(Icons.Default.Refresh, contentDescription = "ReREC", modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -334,7 +432,8 @@ fun MainScreen(
                     Button(
                         onClick = onDelete,
                         modifier = Modifier.weight(1f).height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C)),
+                        enabled = !viewModel.isPlaying
                     ) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -349,7 +448,8 @@ fun MainScreen(
                     Button(
                         onClick = onSave,
                         modifier = Modifier.weight(1f).height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF388E3C))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF388E3C)),
+                        enabled = !viewModel.isPlaying
                     ) {
                         Icon(Icons.Default.Check, contentDescription = "Save", modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -358,7 +458,8 @@ fun MainScreen(
                     Button(
                         onClick = onNewRec,
                         modifier = Modifier.weight(1f).height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2)),
+                        enabled = !viewModel.isPlaying
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "NewREC", modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -367,11 +468,18 @@ fun MainScreen(
                     Button(
                         onClick = onPlay,
                         modifier = Modifier.weight(1f).height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (viewModel.isPlaying) Color.Yellow else Color(0xFF00796B))
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (viewModel.isPlaying) Color(0xFFFFB300) else Color(0xFF00796B)
+                        ),
+                        enabled = viewModel.timelineItems.isNotEmpty() && !viewModel.isRecording
                     ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = "Play", modifier = Modifier.size(20.dp))
+                        Icon(
+                            if (viewModel.isPlaying) Icons.Default.Clear else Icons.Default.PlayArrow,
+                            contentDescription = "Play",
+                            modifier = Modifier.size(20.dp)
+                        )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (viewModel.isPlaying) "PAUSE" else "PLAY", fontSize = 14.sp)
+                        Text(if (viewModel.isPlaying) "STOP" else "PLAY", fontSize = 14.sp)
                     }
                 }
             }
